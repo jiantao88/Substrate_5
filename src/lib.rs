@@ -84,33 +84,33 @@ pub mod pallet {
 			Ok(())
 		}
 		
-		#[pallet::weight(1_000)]
-		#[transactional]
-		pub(super) fn transfer(
-			origin: OriginFor<T>,
-			to: T::AccountId,
-			#[pallet::compact] amount: T::Balance,
-		) -> DispatchResultWithPostInfo {
-			let sender = ensure_signed(origin)?;
+		#[pallet::weight(0)]
+        pub fn transfer(
+            origin:OriginFor<T>,
+            claim: Vec<u8>,
+            to:T::AccountId,
+        ) -> DispatchResultWithPostInfo{
 
-			Accounts::<T>::try_mutate(&sender, |bal| -> DispatchResult {
-				let new_bal = bal.checked_sub(&amount).ok_or(Error::<T>::InsufficientBalance)?;
-				ensure!(new_bal >= T::MinBalance::get(), Error::<T>::BelowMinBalance);
-				*bal = new_bal;
-				Ok(())
-			})?;
-		
-			Accounts::<T>::try_mutate(&to, |rec_bal| -> DispatchResult {
-				let new_bal = rec_bal.saturating_add(amount);
-				ensure!(new_bal >= T::MinBalance::get(), Error::<T>::BelowMinBalance);
-				*rec_bal = new_bal;
-				Ok(())
-			})?;
+            let sender = ensure_signed(origin)?;
 
-			Self::deposit_event(Event::<T>::Transfered(sender, to, amount));
+            let (owner, _) = Proofs::<T>::get(&claim).ok_or(Error::<T>::ClaimNotExist)?;
 
-			Ok(().into())
-		}
+            ensure!(owner == sender, Error::<T>::NotClaimOwner);
+
+            Proofs::<T>::remove(&claim);
+
+            Self::deposit_event(Event::ClaimRevoked(sender, claim.clone()));
+
+            ensure!(!Proofs::<T>::contains_key(claim.clone()), Error::<T>::ProofAlreadyExist);
+
+            Proofs::<T>::insert(
+                &claim, 
+                (to.clone(), frame_system::Pallet::<T>::block_number())
+            );
+
+            Self::deposit_event(Event::ClaimCreated(to, claim));
+            Ok(().into())
+        }
 
 		#[pallet::weight(10_000)]
 		pub fn revoke_claim(
